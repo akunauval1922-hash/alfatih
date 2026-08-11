@@ -1,0 +1,8 @@
+{
+  "name": "ALFATIH PUSAT",
+  "description": "Pusat Laporan Keuangan \u0026 Performa Personel ALFATIH 2030",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
