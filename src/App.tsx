@@ -10,7 +10,9 @@ import {
   DEFAULT_STAFF,
   sendToGoogleSheets,
   sendBatchToGoogleSheets,
-  fetchFromGoogleSheets
+  fetchFromGoogleSheets,
+  clearAllDatabaseStorage,
+  exportDataBackup
 } from './lib/storage';
 
 import { AuthOverlay } from './components/AuthOverlay';
@@ -202,14 +204,35 @@ export default function App() {
 
   // Actions: Edit Transaction
   const handleSaveEditedTransaction = (updatedTx: Transaction) => {
+    const txToSave: Transaction = {
+      ...updatedTx,
+      syncedToCloud: false
+    };
+
     setTransactions((prev) =>
-      prev.map((t) => (t.id === updatedTx.id ? updatedTx : t))
+      prev.map((t) => (t.id === updatedTx.id ? txToSave : t))
     );
+
+    if (config.googleScriptUrl) {
+      sendToGoogleSheets(config.googleScriptUrl, txToSave).then((synced) => {
+        if (synced) {
+          setTransactions((prev) =>
+            prev.map((t) => (t.id === updatedTx.id ? { ...t, syncedToCloud: true } : t))
+          );
+        }
+      });
+    }
   };
 
   // Actions: Delete Transaction
   const handleDeleteTransaction = (id: number) => {
     setTransactions((prev) => prev.filter((t) => t.id !== id));
+
+    if (config.googleScriptUrl) {
+      sendToGoogleSheets(config.googleScriptUrl, { action: 'delete', id }).catch((err) => {
+        console.warn('Delete Google Sheets sync warning:', err);
+      });
+    }
   };
 
   // Actions: Staff management
@@ -223,27 +246,73 @@ export default function App() {
   const handleRenameStaff = (oldName: string, newName: string) => {
     const cleanOld = oldName.trim().toUpperCase();
     const cleanNew = newName.trim().toUpperCase();
-    setStaffList((prev) =>
-      prev.map((s) => (s.trim().toUpperCase() === cleanOld ? cleanNew : s))
+
+    const updatedStaff = staffList.map((s) =>
+      s.trim().toUpperCase() === cleanOld ? cleanNew : s
     );
-    setTransactions((prev) =>
-      prev.map((t) =>
-        (t.name || '').trim().toUpperCase() === cleanOld ? { ...t, name: cleanNew } : t
-      )
+    setStaffList(updatedStaff);
+    saveStaff(updatedStaff);
+
+    const updatedTxs = transactions.map((t) =>
+      (t.name || '').trim().toUpperCase() === cleanOld ? { ...t, name: cleanNew, syncedToCloud: false } : t
     );
+    setTransactions(updatedTxs);
+    saveTransactions(updatedTxs);
+
+    if (config.googleScriptUrl) {
+      updatedTxs.forEach((tx) => {
+        if ((tx.name || '').trim().toUpperCase() === cleanNew) {
+          sendToGoogleSheets(config.googleScriptUrl, tx).catch((err) => {
+            console.warn('Rename staff tx sync error:', err);
+          });
+        }
+      });
+    }
   };
 
   const handleDeleteStaff = (name: string) => {
     const cleanDelete = name.trim().toUpperCase();
-    setStaffList((prev) => prev.filter((s) => s.trim().toUpperCase() !== cleanDelete));
+
+    // 1. Remove from staffList state and storage
+    const updatedStaff = staffList.filter((s) => s.trim().toUpperCase() !== cleanDelete);
+    setStaffList(updatedStaff);
+    saveStaff(updatedStaff);
+
+    // 2. Remove all transactions belonging to this staff member
+    const txsToDelete = transactions.filter(
+      (t) => (t.name || '').trim().toUpperCase() === cleanDelete
+    );
+
+    if (txsToDelete.length > 0) {
+      const remainingTxs = transactions.filter(
+        (t) => (t.name || '').trim().toUpperCase() !== cleanDelete
+      );
+      setTransactions(remainingTxs);
+      saveTransactions(remainingTxs);
+
+      // 3. Sync deletions to Google Sheets database if connected
+      if (config.googleScriptUrl) {
+        txsToDelete.forEach((tx) => {
+          sendToGoogleSheets(config.googleScriptUrl, { action: 'delete', id: tx.id }).catch((err) => {
+            console.warn('Delete staff tx sync warning:', err);
+          });
+        });
+      }
+    }
   };
 
   // Actions: Reset All Data
-  const handleClearAllData = () => {
+  const handleClearAllData = (backupFirst = true) => {
+    if (backupFirst && transactions.length > 0) {
+      try {
+        exportDataBackup(transactions, staffList, config);
+      } catch (e) {
+        console.warn('Auto backup before clear error:', e);
+      }
+    }
+    clearAllDatabaseStorage();
     setTransactions([]);
-    saveTransactions([]);
     setStaffList(DEFAULT_STAFF);
-    saveStaff(DEFAULT_STAFF);
   };
 
   // Actions: Refresh / Kirim Data Aplikasi ke Database (Push) - FAST & OPTIMISTIC
@@ -279,65 +348,76 @@ export default function App() {
 
   // Actions: Update / Ambil Data dari Database ke Aplikasi (Pull) - INSTANT 1-CLICK
   const handleUpdateDataFromDatabase = async (): Promise<{ count: number; success: boolean; msg: string }> => {
-    // 1. Instantly reload local storage state
     const reloaded = loadTransactions();
 
-    // 2. Try direct cloud fetch (up to 8s timeout for Google Apps Script execution)
-    if (config.googleScriptUrl) {
-      try {
-        const cloudData = await fetchFromGoogleSheets(config.googleScriptUrl, 8000);
-        if (cloudData && Array.isArray(cloudData)) {
-          const map = new Map<number, Transaction>();
-          reloaded.forEach((t) => map.set(t.id, t));
-          cloudData.forEach((t) => map.set(t.id, t));
-
-          const merged = Array.from(map.values()).sort(
-            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-          );
-
-          // Extract staff names from merged dataset
-          const staffSet = new Set<string>(staffList.map((s) => s.trim().toUpperCase()));
-          merged.forEach((tx) => {
-            if (tx.name && tx.name.trim()) {
-              const cleanName = tx.name.trim().toUpperCase();
-              const isSystemCategory = [
-                'SEMBAKO & LOGISTIK',
-                'OPERASIONAL & LAYANAN',
-                'LOGISTIK',
-                'LAYANAN',
-                'LAINNYA'
-              ].includes(cleanName);
-
-              if (tx.category === 'personel' || !isSystemCategory) {
-                staffSet.add(cleanName);
-              }
-            }
-          });
-
-          const updatedStaffList = Array.from(staffSet);
-          setStaffList(updatedStaffList);
-          saveStaff(updatedStaffList);
-
-          setTransactions(merged);
-          saveTransactions(merged);
-
-          return {
-            count: merged.length,
-            success: true,
-            msg: `⚡ 1-Klik Berhasil! ${merged.length} data transaksi langsung diperbarui dari Sistem Kontrol!`
-          };
-        }
-      } catch (e) {
-        console.warn('Cloud pull fallback to local:', e);
-      }
+    if (!config.googleScriptUrl || !config.googleScriptUrl.trim()) {
+      setTransactions(reloaded);
+      return {
+        count: reloaded.length,
+        success: false,
+        msg: '⚠️ Web App URL Sistem Kontrol belum diisi. Masukkan URL Web App di Pengaturan!'
+      };
     }
 
-    setTransactions(reloaded);
-    return {
-      count: reloaded.length,
-      success: true,
-      msg: `⚡ 1-Klik Berhasil! Data lokal diperbarui (${reloaded.length} transaksi).`
-    };
+    try {
+      const cloudData = await fetchFromGoogleSheets(config.googleScriptUrl, 10000);
+      if (cloudData && Array.isArray(cloudData)) {
+        const map = new Map<number, Transaction>();
+        reloaded.forEach((t) => map.set(t.id, t));
+        cloudData.forEach((t) => map.set(t.id, t));
+
+        const merged = Array.from(map.values()).sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+
+        // Extract staff names from merged dataset
+        const staffSet = new Set<string>(staffList.map((s) => s.trim().toUpperCase()));
+        merged.forEach((tx) => {
+          if (tx.name && tx.name.trim()) {
+            const cleanName = tx.name.trim().toUpperCase();
+            const isSystemCategory = [
+              'SEMBAKO & LOGISTIK',
+              'OPERASIONAL & LAYANAN',
+              'LOGISTIK',
+              'LAYANAN',
+              'LAINNYA'
+            ].includes(cleanName);
+
+            if (tx.category === 'personel' || !isSystemCategory) {
+              staffSet.add(cleanName);
+            }
+          }
+        });
+
+        const updatedStaffList = Array.from(staffSet);
+        setStaffList(updatedStaffList);
+        saveStaff(updatedStaffList);
+
+        setTransactions(merged);
+        saveTransactions(merged);
+
+        return {
+          count: merged.length,
+          success: true,
+          msg: `⚡ 1-Klik Berhasil! ${merged.length} data transaksi diperbarui dari Google Sheets!`
+        };
+      } else {
+        setTransactions(reloaded);
+        return {
+          count: reloaded.length,
+          success: false,
+          msg: '⚠️ Data dari Google Sheets kosong atau format tidak sesuai.'
+        };
+      }
+    } catch (e: any) {
+      console.warn('Cloud pull error:', e);
+      setTransactions(reloaded);
+      return {
+        count: reloaded.length,
+        success: false,
+        msg: `⚠️ Gagal menarik data dari DB (${e?.message || 'Gagal koneksi'}). Pastikan Kode Apps Script terbaru sudah di-Deploy ulang sebagai Web App dengan akses "Anyone".`
+      };
+    }
   };
 
   // Actions: Batch Sync Unsynced Records
@@ -358,7 +438,7 @@ export default function App() {
 
   // Active Tab Title mapping
   const activeTabTitles: Record<string, string> = {
-    dashboard: 'LAPORAN KEUANGAN TIGA BERSAUDARA',
+    dashboard: 'SYSTEM LAPORAN TIGA BERSAUDARA',
     input: 'INPUT TRANSAKSI KEUANGAN',
     personel: 'PERFORMA KARYAWAN & STAF',
     report: 'PUSAT LAPORAN KEUANGAN',
@@ -456,6 +536,7 @@ export default function App() {
               onRefreshToDatabase={handleRefreshDataToDatabase}
               onUpdateFromDatabase={handleUpdateDataFromDatabase}
               onRestoreData={handleRestoreData}
+              onClearAllData={handleClearAllData}
             />
           )}
         </main>

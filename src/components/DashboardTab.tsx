@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Transaction } from '../types';
 import { formatRupiah, isSembakoTx, isOperasionalTx } from '../lib/storage';
 import { FinancialAnalyticsChart } from './FinancialAnalyticsChart';
+import { AppLogo } from './AppLogo';
 import {
   TrendingUp,
   TrendingDown,
@@ -119,16 +120,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     <div className="space-y-6">
       {/* Top Banner & Quick Action */}
       <div className="bg-gradient-to-r from-red-600 via-red-700 to-red-800 rounded-3xl p-6 sm:p-8 text-white shadow-xl shadow-red-600/20 relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6 border border-red-500">
-        <div className="space-y-2 max-w-xl z-10">
-          <div className="inline-flex items-center space-x-2 bg-yellow-400 text-red-950 px-3.5 py-1 rounded-full text-[11px] font-mono font-black tracking-widest uppercase shadow-sm">
-            <span>SYSTEM UTAMA</span>
+        <div className="flex items-center gap-4 z-10">
+          <AppLogo size="lg" />
+          <div className="space-y-1">
+            <h2 className="text-sm sm:text-base md:text-lg font-bold font-sans tracking-tight text-white uppercase flex items-center gap-2">
+              SYSTEM LAPORAN TIGA BERSAUDARA
+            </h2>
+            <p className="text-xs text-red-100 font-mono uppercase tracking-tight leading-relaxed max-w-xl">
+              MONITOR PENDAPATAN KOTOR, PENGELUARAN OPERASIONAL & PENGELUARAN KARYAWAN TERINTEGRASI SISTEM KONTROL
+            </p>
           </div>
-          <h2 className="text-base sm:text-lg font-bold font-sans tracking-tight text-white uppercase flex items-center gap-2">
-            LAPORAN KEUANGAN TIGA BERSAUDARA
-          </h2>
-          <p className="text-xs text-red-100 font-mono uppercase tracking-tight leading-relaxed">
-            MONITOR PENDAPATAN KOTOR, PENGELUARAN OPERASIONAL & PENGELUARAN KARYAWAN TERINTEGRASI SISTEM KONTROL
-          </p>
         </div>
 
         <button

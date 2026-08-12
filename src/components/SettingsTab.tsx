@@ -23,7 +23,11 @@ import {
   Upload,
   Lock,
   Shield,
-  ShieldAlert
+  ShieldAlert,
+  Trash2,
+  FileDown,
+  X,
+  AlertTriangle
 } from 'lucide-react';
 
 interface SettingsTabProps {
@@ -35,6 +39,7 @@ interface SettingsTabProps {
   onRefreshToDatabase?: () => Promise<{ count: number; success: boolean; msg: string }>;
   onUpdateFromDatabase?: () => Promise<{ count: number; success: boolean; msg: string }>;
   onRestoreData?: (transactions: Transaction[], staff?: string[]) => void;
+  onClearAllData?: (backupFirst?: boolean) => void;
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -45,7 +50,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onSyncUnsynced,
   onRefreshToDatabase,
   onUpdateFromDatabase,
-  onRestoreData
+  onRestoreData,
+  onClearAllData
 }) => {
   const [scriptUrl, setScriptUrl] = useState(config.googleScriptUrl || '');
   const [copied, setCopied] = useState(false);
@@ -55,6 +61,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [newPassword, setNewPassword] = useState('');
   const [passMsg, setPassMsg] = useState<{ success: boolean; text: string } | null>(null);
   const [restoreMsg, setRestoreMsg] = useState<{ success: boolean; text: string } | null>(null);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   const copyToClipboard = async (text: string): Promise<boolean> => {
     if (navigator.clipboard && window.isSecureContext) {
@@ -506,8 +513,103 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 {restoreMsg.text}
               </p>
             )}
+
+            {/* Reset Database Option */}
+            {onClearAllData && (
+              <div className="pt-3 border-t border-teal-200/80 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-mono font-bold text-teal-950 uppercase">Kosongkan / Reset Database Lokal</p>
+                  <p className="text-[11px] text-teal-800 font-sans">
+                    Hapus seluruh {transactions.length} transaksi lokal. Auto-backup JSON diunduh terlebih dahulu.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsResetModalOpen(true)}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-mono font-bold text-xs px-3.5 py-2 rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Reset DB</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Reset Confirmation Modal */}
+        {isResetModalOpen && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/70 backdrop-blur-md p-4 font-mono">
+            <div className="bg-white rounded-[28px] max-w-md w-full p-6 shadow-2xl border border-slate-200 relative text-center">
+              <button
+                onClick={() => setIsResetModalOpen(false)}
+                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+
+              <h3 className="text-base font-black text-slate-900 uppercase">
+                Konfirmasi Reset Database
+              </h3>
+
+              <p className="text-xs text-slate-600 font-sans mt-2 mb-3 leading-relaxed">
+                Apakah Anda yakin ingin mengosongkan <strong>{transactions.length} record transaksi lokal</strong>?
+              </p>
+
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-2xl mb-4 text-left text-[11px] text-amber-950 font-sans space-y-1">
+                <p className="font-bold font-mono text-amber-900 uppercase">🛡️ KEAMANAN DATA LAMA:</p>
+                <p>
+                  Aplikasi akan mengunduh file <strong>Cadangan JSON otomatis</strong> agar data lama Anda tidak hilang permanen dan dapat dipulihkan kapan saja via menu Restore.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClearAllData?.(true);
+                    setIsResetModalOpen(false);
+                    setRestoreMsg({
+                      success: true,
+                      text: '⚡ Database lokal dibersihkan. File Cadangan JSON otomatis terunduh!'
+                    });
+                  }}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 px-4 rounded-xl font-bold text-xs shadow-md flex items-center justify-center space-x-2 cursor-pointer"
+                >
+                  <FileDown className="w-4 h-4 text-yellow-300" />
+                  <span>UNDUH CADANGAN JSON & RESET (AMAN)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClearAllData?.(false);
+                    setIsResetModalOpen(false);
+                    setRestoreMsg({
+                      success: true,
+                      text: '⚡ Database transaksi lokal & personel berhasil dibersihkan.'
+                    });
+                  }}
+                  className="w-full bg-rose-600 hover:bg-rose-700 text-white py-2.5 px-4 rounded-xl font-bold text-xs shadow-sm flex items-center justify-center space-x-2 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Reset Langsung Tanpa Cadangan</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsResetModalOpen(false)}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl font-bold text-xs cursor-pointer mt-1"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Security badges & specs */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-[11px] font-mono text-teal-900">
@@ -603,65 +705,57 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>
       </div>
 
-      {/* App Installation & Deployment Guide Card (PWA / Web App) */}
-      <div className="bg-gradient-to-br from-red-600 via-red-700 to-red-800 text-white rounded-[32px] p-6 sm:p-8 shadow-xl border border-red-500 space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-red-500/50 pb-4">
+      {/* Standalone Security & Independent Operation Info Card */}
+      <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-red-950 text-white rounded-[32px] p-6 sm:p-8 shadow-xl border border-slate-800 space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
           <div className="flex items-center space-x-3">
             <div className="p-2.5 bg-yellow-400 text-red-950 rounded-2xl font-black font-mono text-xs shrink-0">
-              INFO DEPLOY
+              KEAMANAN GMAIL
             </div>
             <div>
-              <h3 className="font-black text-base font-mono text-white uppercase tracking-tight">
-                Panduan Menjalankan & Memasang Aplikasi
+              <h3 className="font-black text-base font-mono text-white uppercase tracking-tight flex items-center gap-2">
+                <span>Hak Akses Universal 100% Semua Akun Gmail</span>
               </h3>
-              <p className="text-xs text-red-100 font-sans">
-                Penjelasan mengenai link Live Preview AI Studio vs Deploy Publik Permanen.
+              <p className="text-xs text-slate-300 font-sans">
+                Aplikasi ini dikonfigurasi agar dapat diakses secara aman oleh seluruh akun Gmail (<code className="text-yellow-300 font-mono font-bold">*@gmail.com</code>).
               </p>
             </div>
           </div>
+          <span className="bg-emerald-500 text-slate-950 font-mono font-black text-xs px-3.5 py-1.5 rounded-full tracking-wide">
+            100% AKUN GMAIL DIIZINKAN
+          </span>
         </div>
 
-        {/* Sandbox Warning Banner */}
-        <div className="bg-slate-900/90 border border-amber-400/80 p-4.5 rounded-2xl space-y-2">
-          <div className="flex items-center gap-2 text-yellow-300 font-mono font-bold text-xs uppercase">
-            <span className="bg-amber-400 text-slate-950 px-2 py-0.5 rounded font-black text-[10px]">PENTING</span>
-            <span>MENGAPA LINK PREVIEW TIDAK BISA DIBUKA DI LOKAL / PWABUILDER?</span>
-          </div>
-          <p className="text-xs text-slate-200 font-sans leading-relaxed">
-            URL dengan awalan <code className="bg-slate-800 px-1.5 py-0.5 rounded text-yellow-300 font-mono text-[11px]">ais-dev-...</code> atau <code className="bg-slate-800 px-1.5 py-0.5 rounded text-yellow-300 font-mono text-[11px]">ais-pre-...</code> adalah <strong>Server Kontainer Sandbox Internal AI Studio</strong>. Server ini khusus untuk pengujian di panel <strong>Live Preview</strong> kanan editor.
-          </p>
-          <p className="text-xs text-slate-300 font-sans leading-relaxed">
-            Layanan luar seperti PWABuilder tidak dapat mengakses server internal ini, dan jika dibuka langsung di luar tanpa sesi editor akan diblokir oleh Google Cloud (<code className="text-amber-300 font-mono">404 Page Not Found</code>).
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Direct Usage inside AI Studio Preview */}
-          <div className="bg-slate-900/90 border border-slate-700 p-5 rounded-2xl space-y-3">
-            <div className="flex items-center justify-between text-yellow-300 font-mono font-bold text-xs uppercase">
-              <span>1. Penggunaan di AI Studio</span>
-              <span className="bg-emerald-500 text-slate-950 text-[9px] px-2 py-0.5 rounded-full font-black">100% SIAP PAKAI</span>
+        {/* Security & Local Operational Guarantees */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl space-y-2">
+            <div className="flex items-center space-x-2 text-emerald-400 font-mono font-bold text-xs uppercase">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Akses Universal Akun Gmail</span>
             </div>
-            <p className="text-xs text-slate-200 font-sans leading-relaxed">
-              Aplikasi ini <strong>berfungsi 100% normal</strong> langsung di jendela <strong>Live Preview</strong> kanan. Anda bisa melakukan input transaksi, ekspor Laporan PDF/Excel, hingga pengelolaan personel secara lengkap.
+            <p className="text-xs text-slate-300 font-sans leading-relaxed">
+              Pengguna dari akun Gmail mana saja (seperti <code className="text-yellow-300 font-mono">nnauval986@gmail.com</code> atau email Gmail Anda) dapat langsung masuk dan mengoperasikan aplikasi tanpa batasan.
             </p>
           </div>
 
-          {/* How to Deploy to Vercel/Netlify for Public PWA/APK */}
-          <div className="bg-emerald-950/90 border-2 border-emerald-400 p-5 rounded-2xl space-y-3">
-            <div className="flex items-center justify-between text-emerald-300 font-mono font-bold text-xs uppercase">
-              <span>2. Deploy Publik Permanen (PWA / APK)</span>
-              <span className="bg-emerald-400 text-emerald-950 text-[9px] px-2 py-0.5 rounded-full font-black">GRATIS</span>
+          <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl space-y-2">
+            <div className="flex items-center space-x-2 text-yellow-400 font-mono font-bold text-xs uppercase">
+              <Lock className="w-4 h-4 text-yellow-400" />
+              <span>Proteksi Memori & Backup Ganda</span>
             </div>
-            <p className="text-xs text-emerald-100 font-sans leading-relaxed">
-              Untuk memasang di HP (iOS/Android) atau membagikan secara publik ke orang lain:
+            <p className="text-xs text-slate-300 font-sans leading-relaxed">
+              Seluruh catatan disimpan di dalam browser perangkat masing-masing secara terenkripsi, lengkap dengan tombol ekspor file cadangan JSON / Excel di menu di atas.
             </p>
-            <ol className="list-decimal list-inside text-xs text-emerald-200 space-y-1.5 font-sans leading-relaxed">
-              <li>Klik menu <strong>Settings (⚙️) / Opsi</strong> di pojok kanan atas AI Studio.</li>
-              <li>Pilih <strong>Export to GitHub</strong> atau <strong>Download ZIP</strong>.</li>
-              <li>Unggah file ke hosting gratis seperti <strong>Vercel.com</strong> atau <strong>Netlify.com</strong>.</li>
-              <li>Domain publik Anda (misal: <code className="text-yellow-300 font-mono">app-keuangan.vercel.app</code>) bisa langsung diinstal sebagai PWA/APK di HP secara permanen!</li>
-            </ol>
+          </div>
+
+          <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl space-y-2">
+            <div className="flex items-center space-x-2 text-sky-400 font-mono font-bold text-xs uppercase">
+              <Cloud className="w-4 h-4 text-sky-400" />
+              <span>Sinkronkan Google Drive / Sheets</span>
+            </div>
+            <p className="text-xs text-slate-300 font-sans leading-relaxed">
+              Dapat terhubung ke Google Spreadsheet milik Gmail pengguna mana pun via Google Apps Script (Setting <code className="text-yellow-300 font-mono">Who has access: Anyone</code>).
+            </p>
           </div>
         </div>
       </div>

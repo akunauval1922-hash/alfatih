@@ -462,7 +462,7 @@ export const PersonelTab: React.FC<PersonelTabProps> = ({
             </h3>
 
             <p className="text-xs text-slate-600 font-sans mt-2 mb-6 leading-relaxed">
-              Apakah Anda yakin ingin menghapus <strong>{deletingStaffName}</strong> dari daftar staf? Catatan transaksi yang sudah ada tidak akan terhapus.
+              Apakah Anda yakin ingin menghapus <strong>{deletingStaffName}</strong> dari daftar staf? Karyawan beserta seluruh riwayat transaksinya akan terhapus dari sistem dan tampilan performa.
             </p>
 
             <div className="flex gap-2.5">

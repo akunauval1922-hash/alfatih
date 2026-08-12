@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Transaction } from '../types';
 import { formatRupiah, exportToExcel, isSembakoTx, isOperasionalTx } from '../lib/storage';
 import { exportToPdf } from '../lib/pdfExport';
+import { AppLogo } from './AppLogo';
 import {
   FileSpreadsheet,
   Printer,
@@ -33,7 +34,7 @@ import {
 interface ReportTabProps {
   transactions: Transaction[];
   staffList: string[];
-  onClearAllData: () => void;
+  onClearAllData: (backupFirst?: boolean) => void;
   googleScriptUrl?: string;
   onOpenSettings?: () => void;
   onSyncUnsynced?: () => Promise<number>;
@@ -141,13 +142,17 @@ export const ReportTab: React.FC<ReportTabProps> = ({
     }
   };
 
-  const handleConfirmReset = () => {
-    onClearAllData();
+  const handleConfirmReset = (backupFirst = true) => {
+    onClearAllData(backupFirst);
     setIsResetModalOpen(false);
-    setResetSuccessMsg('Database transaksi & daftar karyawan berhasil dibersihkan / di-reset ke standar.');
+    setResetSuccessMsg(
+      backupFirst
+        ? '⚡ Database lokal dibersihkan. File Cadangan JSON otomatis terunduh agar data Anda tetap aman dan dapat dipulihkan kapan saja.'
+        : '⚡ Database transaksi lokal & personel berhasil dibersihkan.'
+    );
     setTimeout(() => {
       setResetSuccessMsg('');
-    }, 4000);
+    }, 5000);
   };
 
   // Filtered transactions for reports based on category & period
@@ -248,46 +253,23 @@ export const ReportTab: React.FC<ReportTabProps> = ({
         {/* Accent Bar */}
         <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700" />
 
-        {/* Top Header Row with Title & Cloud/Reset Utility Actions */}
+        {/* Top Header Row with Title */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
           <div className="flex items-center gap-3.5">
-            <div className="p-3 bg-teal-50 text-teal-700 rounded-2xl border border-teal-200/80 shadow-2xs shrink-0">
-              <Printer className="w-6 h-6 text-teal-700" />
-            </div>
+            <AppLogo size="md" />
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight font-mono uppercase">
-                  PUSAT LAPORAN KEUANGAN TIGA BERSAUDARA
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-base md:text-lg font-bold text-slate-900 tracking-tight font-mono uppercase">
+                  SYSTEM APLIKASI LAPORAN HARIAN DAN BULANAN TIGA BERSAUDARA
                 </h2>
                 <span className="bg-teal-700 text-white text-[10px] px-2.5 py-0.5 rounded-full font-mono font-black tracking-wider uppercase shadow-2xs">
                   REALTIME DATA
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-mono uppercase tracking-tight mt-0.5">
-                PUSAT FILTER TRANSAKSI, CETAK DOKUMEN RESMI, EKSPOR PDF/EXCEL, SERTA SINKRONISASI SISTEM KONTROL
+                PUSAT FILTER TRANSAKSI, CETAK DOKUMEN RESMI, SERTA EKSPOR PDF/EXCEL
               </p>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-start sm:self-center">
-            <button
-              onClick={handleOpenGoogleSheets}
-              className="bg-teal-50 hover:bg-teal-100 text-teal-900 font-mono font-bold text-xs px-3.5 py-2.5 rounded-2xl border border-teal-200 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs active:scale-95"
-              title={googleScriptUrl ? "Buka Sistem Kontrol" : "Pengaturan Sistem Kontrol"}
-            >
-              <Cloud className="w-4 h-4 text-teal-600" />
-              <span>Sistem Kontrol</span>
-              <ExternalLink className="w-3.5 h-3.5 opacity-60" />
-            </button>
-
-            <button
-              onClick={() => setIsResetModalOpen(true)}
-              className="bg-rose-50 hover:bg-rose-100 text-rose-800 font-mono font-bold text-xs px-3.5 py-2.5 rounded-2xl border border-rose-200 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs active:scale-95"
-              title="Hapus seluruh data lokal"
-            >
-              <Trash2 className="w-4 h-4 text-rose-600" />
-              <span>Reset DB</span>
-            </button>
           </div>
         </div>
 
@@ -591,20 +573,16 @@ export const ReportTab: React.FC<ReportTabProps> = ({
         {/* Printable Official Header */}
         <div className="border-b-2 border-red-600 pb-6 text-center space-y-2 relative">
           <div className="flex items-center justify-center gap-3">
-            <div className="w-10 h-10 bg-red-600 text-yellow-300 rounded-xl flex items-center justify-center font-black shadow-md border border-red-500">
-              <Landmark className="w-6 h-6" />
-            </div>
+            <AppLogo size="md" />
             <div className="text-left">
-              <div className="flex items-center gap-2">
-                <span className="text-sm sm:text-base font-bold tracking-tight text-slate-900 uppercase">LAPORAN KEUANGAN TIGA BERSAUDARA</span>
-                <span className="bg-yellow-400 text-red-950 text-[10px] px-2 py-0.5 rounded-full font-black uppercase">3 BERSAUDARA HQ</span>
-              </div>
-              <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wide">SISTEM INFORMASI LAPORAN KEUANGAN & PERFORMA KARYAWAN</p>
+              <h1 className="text-sm sm:text-base md:text-lg font-extrabold tracking-tight text-slate-900 uppercase">
+                SYSTEM APLIKASI LAPORAN HARIAN DAN BULANAN TIGA BERSAUDARA
+              </h1>
+              <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wide">
+                SISTEM INFORMASI LAPORAN KEUANGAN & PERFORMA KARYAWAN
+              </p>
             </div>
           </div>
-          <h1 className="text-xs sm:text-sm font-bold text-slate-900 tracking-wider uppercase pt-2">
-            LAPORAN HARIAN DAN BULANAN TIGA BERSAUDARA
-          </h1>
           <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-slate-600 font-sans pt-1">
             <span className="flex items-center gap-1 font-mono font-bold bg-yellow-50 text-red-900 border border-yellow-200 px-3 py-1 rounded-xl">
               <ShieldCheck className="w-3.5 h-3.5 text-red-600" />
@@ -1003,25 +981,42 @@ export const ReportTab: React.FC<ReportTabProps> = ({
               Konfirmasi Reset Database
             </h3>
 
-            <p className="text-xs text-slate-600 font-sans mt-2 mb-6 leading-relaxed">
-              Apakah Anda yakin ingin menghapus <strong>seluruh {transactions.length} record transaksi lokal</strong> dan mereset daftar nama karyawan kembali ke standar awal? Tindakan ini tidak dapat dibatalkan.
+            <p className="text-xs text-slate-600 font-sans mt-2 mb-4 leading-relaxed">
+              Apakah Anda yakin ingin mengosongkan <strong>{transactions.length} record transaksi lokal</strong>?
             </p>
 
-            <div className="flex gap-3">
+            <div className="bg-amber-50 border border-amber-200 p-3 rounded-2xl mb-5 text-left text-[11px] text-amber-950 font-sans space-y-1">
+              <p className="font-bold font-mono text-amber-900 uppercase">🛡️ KEAMANAN DATA LAMA:</p>
+              <p>
+                Aplikasi akan mengunduh file <strong>Cadangan JSON otomatis</strong> agar data lama Anda tidak hilang permanen dan dapat dipulihkan kapan saja via menu Restore.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => handleConfirmReset(true)}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 px-4 rounded-xl font-bold text-xs shadow-md flex items-center justify-center space-x-2 cursor-pointer"
+              >
+                <FileDown className="w-4 h-4 text-yellow-300" />
+                <span>UNDUH CADANGAN JSON & RESET (AMAN)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleConfirmReset(false)}
+                className="w-full bg-rose-600 hover:bg-rose-700 text-white py-2.5 px-4 rounded-xl font-bold text-xs shadow-sm flex items-center justify-center space-x-2 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Reset Langsung Tanpa Cadangan</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setIsResetModalOpen(false)}
-                className="flex-1 bg-white/60 hover:bg-white/90 border border-white/60 text-slate-700 py-3.5 rounded-2xl font-bold text-xs cursor-pointer"
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl font-bold text-xs cursor-pointer mt-1"
               >
                 Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmReset}
-                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white py-3.5 rounded-2xl font-bold text-xs shadow-md shadow-rose-200 flex items-center justify-center space-x-1.5 cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Reset Database</span>
               </button>
             </div>
           </div>

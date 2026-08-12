@@ -169,6 +169,16 @@ export const importDataBackup = (jsonString: string): { success: boolean; count:
   }
 };
 
+export const clearAllDatabaseStorage = () => {
+  try {
+    localStorage.setItem(DB_KEY, JSON.stringify([]));
+    localStorage.setItem(BACKUP_KEY, JSON.stringify([]));
+    localStorage.setItem(STAFF_KEY, JSON.stringify(DEFAULT_STAFF));
+  } catch (e) {
+    console.error("Error clearing database storage", e);
+  }
+};
+
 export const loadConfig = (): AppConfig => {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
@@ -231,24 +241,30 @@ export const isOperasionalTx = (t: Transaction): boolean => {
   return cat === 'layanan' || cat === 'operasional' || name.includes('operasional') || name.includes('layanan') || note.includes('operasional') || note.includes('layanan');
 };
 
-export const sendToGoogleSheets = async (scriptUrl: string, entry: Transaction): Promise<boolean> => {
+export const sendToGoogleSheets = async (scriptUrl: string, entry: Transaction | { action: string; id: number }): Promise<boolean> => {
   if (!scriptUrl || !scriptUrl.trim().startsWith('http')) {
     return false;
   }
 
-  const payload = {
-    id: entry.id,
-    date: entry.date,
-    category: entry.category,
-    name: entry.name,
-    income: entry.income || 0,
-    expense: entry.expense || 0,
-    net: (entry.income || 0) - (entry.expense || 0),
-    totalIncome: entry.income || 0,
-    totalExpense: entry.expense || 0,
-    totalHasil: (entry.income || 0) - (entry.expense || 0),
-    note: entry.note || ''
-  };
+  let payload: any;
+  if ('action' in entry && entry.action === 'delete') {
+    payload = { action: 'delete', id: entry.id };
+  } else {
+    const tx = entry as Transaction;
+    payload = {
+      id: tx.id,
+      date: tx.date,
+      category: tx.category,
+      name: tx.name,
+      income: tx.income || 0,
+      expense: tx.expense || 0,
+      net: (tx.income || 0) - (tx.expense || 0),
+      totalIncome: tx.income || 0,
+      totalExpense: tx.expense || 0,
+      totalHasil: (tx.income || 0) - (tx.expense || 0),
+      note: tx.note || ''
+    };
+  }
 
   try {
     await fetch(scriptUrl.trim(), {
@@ -308,7 +324,7 @@ export const sendBatchToGoogleSheets = async (scriptUrl: string, entries: Transa
   }
 };
 
-export const fetchFromGoogleSheets = async (scriptUrl: string, timeoutMs: number = 8000): Promise<Transaction[] | null> => {
+export const fetchFromGoogleSheets = async (scriptUrl: string, timeoutMs: number = 10000): Promise<Transaction[] | null> => {
   if (!scriptUrl || !scriptUrl.trim().startsWith('http')) {
     return null;
   }
@@ -323,12 +339,10 @@ export const fetchFromGoogleSheets = async (scriptUrl: string, timeoutMs: number
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
+    // Simple fetch without custom request headers to prevent CORS preflight OPTIONS failures on script.google.com
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json'
-      },
-      cache: 'no-store',
+      redirect: 'follow',
       signal: controller.signal
     });
     clearTimeout(timeoutId);
@@ -346,24 +360,33 @@ export const fetchFromGoogleSheets = async (scriptUrl: string, timeoutMs: number
           if (s.length >= 10) cleanDate = s.substring(0, 10);
         }
 
+        const parseAmount = (val: any) => {
+          if (typeof val === 'number') return val;
+          if (!val) return 0;
+          const clean = String(val).replace(/[^0-9.-]/g, '');
+          return Number(clean) || 0;
+        };
+
         return {
           id: item.id ? Number(item.id) : Date.now() - idx * 1000,
           date: cleanDate,
           category: (item.category || 'personel').toString().toLowerCase(),
           name: (item.name || 'KARYAWAN').toString().trim().toUpperCase(),
-          income: Number(item.income) || 0,
-          expense: Number(item.expense) || 0,
+          income: parseAmount(item.income),
+          expense: parseAmount(item.expense),
           note: item.note ? String(item.note) : '',
           syncedToCloud: true,
           createdAt: item.createdAt || item.date || new Date().toISOString()
         };
       });
       return parsed;
+    } else if (data && typeof data === 'object' && (data as any).error) {
+      throw new Error(String((data as any).error));
     }
     return null;
   } catch (error) {
     console.warn("Fetch from Google Sheets failed:", error);
-    return null;
+    throw error;
   }
 };
 
@@ -380,38 +403,56 @@ export const exportToExcel = (
   const grandExpense = transactions.reduce((sum, t) => sum + (t.expense || 0), 0);
   const grandNet = grandIncome - grandExpense;
 
-  // Sheet 1: Raw Transactions
+  // Sheet 1: Raw Transactions (Format Database Spreadsheet)
   const rawData: any[] = transactions.map((t, idx) => ({
     "No": idx + 1,
     "ID Transaksi": t.id,
     "Tanggal": t.date,
     "Kategori": t.category.toUpperCase(),
     "Nama / Subjek Karyawan": t.name,
-    "Total Pendapatan (IDR)": t.income || 0,
-    "Total Pengeluaran (IDR)": t.expense || 0,
-    "Total Hasil / Saldo (IDR)": (t.income || 0) - (t.expense || 0),
+    "Total Pendapatan (IDR)": formatRupiah(t.income || 0),
+    "Total Pengeluaran (IDR)": formatRupiah(t.expense || 0),
+    "Total Hasil / Saldo (IDR)": formatRupiah((t.income || 0) - (t.expense || 0)),
     "Catatan / Keterangan": t.note || "-",
     "Status Cloud": t.syncedToCloud ? "TERKIRIM" : "LOKAL"
   }));
 
-  // Append Grand Total Summary Row
+  // Append Total Summary Row
   rawData.push({
     "No": "-",
-    "ID Transaksi": "SUMMARY",
+    "ID Transaksi": "-",
     "Tanggal": "-",
-    "Kategori": `TOTAL (${categoryLabel.toUpperCase()} - ${periodLabel.toUpperCase()})`,
-    "Nama / Subjek Karyawan": "REKAPITULASI DANA",
-    "Total Pendapatan (IDR)": grandIncome,
-    "Total Pengeluaran (IDR)": grandExpense,
-    "Total Hasil / Saldo (IDR)": grandNet,
+    "Kategori": "TOTAL",
+    "Nama / Subjek Karyawan": "Total Hasil Pendapatan dan Pengeluaran Karyawan",
+    "Total Pendapatan (IDR)": formatRupiah(grandIncome),
+    "Total Pengeluaran (IDR)": formatRupiah(grandExpense),
+    "Total Hasil / Saldo (IDR)": formatRupiah(grandNet),
     "Catatan / Keterangan": `Audit ${categoryLabel} (${periodLabel})`,
     "Status Cloud": "AUDITED"
   });
 
   const wsTransactions = XLSX.utils.json_to_sheet(rawData);
+
+  // Calculate clean column widths for Worksheet 1
+  if (rawData.length > 0) {
+    const keysTx = Object.keys(rawData[0]);
+    const colWidthsTx = keysTx.map(key => {
+      let maxLen = key.length;
+      rawData.forEach(row => {
+        const val = row[key];
+        if (val !== null && val !== undefined) {
+          const strVal = val.toString();
+          if (strVal.length > maxLen) maxLen = strVal.length;
+        }
+      });
+      return { wch: Math.max(maxLen + 5, 16) };
+    });
+    wsTransactions['!cols'] = colWidthsTx;
+  }
+
   XLSX.utils.book_append_sheet(wb, wsTransactions, "Riwayat Transaksi");
 
-  // Sheet 2: Staff Summary
+  // Sheet 2: Staff Summary (Format Database Spreadsheet)
   const staffSummary: any[] = staffList.map((staffName, idx) => {
     const logs = transactions.filter(t => t.name === staffName);
     let inTotal = 0, outTotal = 0;
@@ -419,39 +460,59 @@ export const exportToExcel = (
       inTotal += l.income || 0;
       outTotal += l.expense || 0;
     });
+    const netTotal = inTotal - outTotal;
     return {
       "No": idx + 1,
       "Nama Karyawan": staffName,
       "Total Log Transaksi": logs.length,
-      "Total Pendapatan (IDR)": inTotal,
-      "Total Pengeluaran (IDR)": outTotal,
-      "Total Hasil / Saldo (IDR)": inTotal - outTotal,
-      "Status Performa": (inTotal - outTotal) >= 0 ? "SURPLUS / UNTUNG" : "DEFISIT / RUGI"
+      "Total Pendapatan (IDR)": formatRupiah(inTotal),
+      "Total Pengeluaran (IDR)": formatRupiah(outTotal),
+      "Total Hasil / Saldo (IDR)": formatRupiah(netTotal),
+      "Status Performa": netTotal >= 0 ? "SURPLUS / UNTUNG" : "DEFISIT / RUGI"
     };
   });
 
   staffSummary.push({
     "No": "-",
-    "Nama Karyawan": "TOTAL KESELURUHAN STAFF",
+    "Nama Karyawan": "Total Hasil Pendapatan dan Pengeluaran Karyawan",
     "Total Log Transaksi": transactions.length,
-    "Total Pendapatan (IDR)": grandIncome,
-    "Total Pengeluaran (IDR)": grandExpense,
-    "Total Hasil / Saldo (IDR)": grandNet,
+    "Total Pendapatan (IDR)": formatRupiah(grandIncome),
+    "Total Pengeluaran (IDR)": formatRupiah(grandExpense),
+    "Total Hasil / Saldo (IDR)": formatRupiah(grandNet),
     "Status Performa": grandNet >= 0 ? "TOTAL SURPLUS" : "TOTAL DEFISIT"
   });
 
   const wsStaff = XLSX.utils.json_to_sheet(staffSummary);
+
+  // Calculate clean column widths for Worksheet 2
+  if (staffSummary.length > 0) {
+    const keysStaff = Object.keys(staffSummary[0]);
+    const colWidthsStaff = keysStaff.map(key => {
+      let maxLen = key.length;
+      staffSummary.forEach(row => {
+        const val = row[key];
+        if (val !== null && val !== undefined) {
+          const strVal = val.toString();
+          if (strVal.length > maxLen) maxLen = strVal.length;
+        }
+      });
+      return { wch: Math.max(maxLen + 5, 16) };
+    });
+    wsStaff['!cols'] = colWidthsStaff;
+  }
+
   XLSX.utils.book_append_sheet(wb, wsStaff, "Rekap Karyawan");
 
   // Save file
   const safeCategory = categoryLabel.replace(/[^a-zA-Z0-9]/g, '_');
   const safePeriod = periodLabel.replace(/[^a-zA-Z0-9]/g, '_');
-  const filename = `Laporan_Tiga_Bersaudara_${safeCategory}_${safePeriod}_${new Date().toISOString().split('T')[0]}.xlsx`;
+  const dateStr = new Date().toISOString().split('T')[0];
+  const filename = `Laporan_System_Aplikasi_${safeCategory}_${safePeriod}_${dateStr}.xlsx`;
   XLSX.writeFile(wb, filename);
 };
 
 export const generateGoogleAppsScriptCode = (): string => {
-  return `// === GOOGLE APPS SCRIPT UNTUK KEUANGAN TIGA BERSAUDARA ===
+  return `// === GOOGLE APPS SCRIPT UNTUK LAPORAN KEUANGAN SYSTEM APLIKASI ===
 // 1. Tempelkan kode ini di Google Sheets -> Extensions -> Apps Script
 // 2. Klik Deploy -> New Deployment -> Web App
 // 3. Set "Execute as: Me" dan "Who has access: Anyone"
@@ -462,40 +523,52 @@ function doGet(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getActiveSheet();
     var lastRow = sheet.getLastRow();
+    var data = [];
 
-    if (e && e.parameter && e.parameter.format === "json") {
-      var data = [];
-      if (lastRow >= 2) {
-        var rows = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
-        for (var i = 0; i < rows.length; i++) {
-          var row = rows[i];
-          var idVal = String(row[0] || "");
-          var catVal = String(row[2] || "");
+    if (lastRow >= 2) {
+      var rows = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        var idVal = String(row[0] || "").trim();
+        var catVal = String(row[2] || "").trim();
 
-          if (idVal !== "SUMMARY" && catVal.indexOf("TOTAL KESELURUHAN") === -1) {
-            data.push({
-              id: Number(row[0]) || (Date.now() - i),
-              date: row[1] ? String(row[1]).split("T")[0] : new Date().toISOString().split("T")[0],
-              category: String(row[2] || "personel").toLowerCase(),
-              name: String(row[3] || "KARYAWAN"),
-              income: Number(row[4]) || 0,
-              expense: Number(row[5]) || 0,
-              note: String(row[7] || ""),
-              syncedToCloud: true
-            });
+        if (idVal !== "SUMMARY" && idVal !== "-" && catVal.toUpperCase().indexOf("TOTAL KESELURUHAN") === -1 && catVal.toLowerCase() !== "kategori") {
+          var parseNum = function(val) {
+            if (typeof val === "number") return val;
+            var s = String(val || "").replace(/[^0-9.-]/g, "");
+            return Number(s) || 0;
+          };
+
+          var dateStr = "";
+          if (row[1] instanceof Date) {
+            var d = row[1];
+            var yyyy = d.getFullYear();
+            var mm = String(d.getMonth() + 1);
+            if (mm.length < 2) mm = "0" + mm;
+            var dd = String(d.getDate());
+            if (dd.length < 2) dd = "0" + dd;
+            dateStr = yyyy + "-" + mm + "-" + dd;
+          } else if (row[1]) {
+            dateStr = String(row[1]).split("T")[0];
+          } else {
+            dateStr = new Date().toISOString().split("T")[0];
           }
+
+          data.push({
+            id: Number(row[0]) || (Date.now() - i),
+            date: dateStr,
+            category: String(row[2] || "personel").toLowerCase(),
+            name: String(row[3] || "KARYAWAN"),
+            income: parseNum(row[4]),
+            expense: parseNum(row[5]),
+            note: String(row[7] || ""),
+            syncedToCloud: true
+          });
         }
       }
-      return ContentService.createTextOutput(JSON.stringify(data))
-        .setMimeType(ContentService.MimeType.JSON);
     }
-
-    return HtmlService.createHtmlOutput(
-      '<div style="font-family:sans-serif; padding:20px; text-align:center; color:#991b1b;">' +
-      '<h2>✅ Web App Sistem Kontrol Laporan Keuangan Berfungsi Aktif!</h2>' +
-      '<p>Gunakan URL ini di aplikasi untuk Sinkronisasi Otomatis Data Keuangan.</p>' +
-      '</div>'
-    );
+    return ContentService.createTextOutput(JSON.stringify(data))
+      .setMimeType(ContentService.MimeType.JSON);
   } catch(err) {
     return ContentService.createTextOutput(JSON.stringify({ "error": err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -534,33 +607,73 @@ function doPost(e) {
       }
     }
 
-    // 3. Tambahkan baris transaksi baru
-    var items = Array.isArray(data) ? data : [data];
+    // 3. Cek Aksi Hapus atau Tambah/Edit Data
+    if (data && data.action === "delete") {
+      var targetId = String(data.id || "").trim();
+      var currentLastRow = sheet.getLastRow();
+      if (currentLastRow >= 2 && targetId) {
+        var idRange = sheet.getRange(2, 1, currentLastRow - 1, 1).getValues();
+        for (var d = idRange.length - 1; d >= 0; d--) {
+          var checkId = String(idRange[d][0] || "").trim();
+          if (checkId === targetId) {
+            sheet.deleteRow(d + 2);
+          }
+        }
+      }
+    } else {
+      var items = Array.isArray(data) ? data : [data];
 
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i];
-      if (item.category === "TOTAL KESELURUHAN" || item.id === "SUMMARY") {
-        continue;
+      // Peta ID yang sudah ada di spreadsheet untuk Update/Edit secara presisi
+      var updatedLastRow = sheet.getLastRow();
+      var existingIdsMap = {};
+      if (updatedLastRow >= 2) {
+        var idValues = sheet.getRange(2, 1, updatedLastRow - 1, 1).getValues();
+        for (var r = 0; r < idValues.length; r++) {
+          var rowIdStr = String(idValues[r][0] || "").trim();
+          if (rowIdStr && rowIdStr !== "SUMMARY" && rowIdStr !== "-") {
+            existingIdsMap[rowIdStr] = r + 2; // Baris di sheet (dimulai dari baris 2)
+          }
+        }
       }
 
-      var income = Number(item.income || item.totalIncome || 0);
-      var expense = Number(item.expense || item.totalExpense || 0);
-      var net = Number(item.net || item.totalHasil || (income - expense));
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        if (!item || item.category === "TOTAL KESELURUHAN" || item.id === "SUMMARY") {
+          continue;
+        }
 
-      sheet.appendRow([
-        item.id || Date.now(),
-        item.date || new Date().toISOString().split('T')[0],
-        (item.category || "Input App").toUpperCase(),
-        item.name || "-",
-        income,
-        expense,
-        net,
-        item.note || "-",
-        new Date().toLocaleString("id-ID")
-      ]);
+        var income = Number(item.income || item.totalIncome || 0);
+        var expense = Number(item.expense || item.totalExpense || 0);
+        var net = Number(item.net || item.totalHasil || (income - expense));
+        var itemIdStr = String(item.id || "").trim();
+
+        var rowValues = [
+          item.id || Date.now(),
+          item.date || new Date().toISOString().split('T')[0],
+          (item.category || "Input App").toUpperCase(),
+          item.name || "-",
+          income,
+          expense,
+          net,
+          item.note || "-",
+          new Date().toLocaleString("id-ID")
+        ];
+
+        // Jika ID sudah ada di database, UPDATE baris lama!
+        if (itemIdStr && existingIdsMap[itemIdStr]) {
+          var targetRow = existingIdsMap[itemIdStr];
+          sheet.getRange(targetRow, 1, 1, 9).setValues([rowValues]);
+        } else {
+          // Jika ID belum ada, TAMBAH baris baru di bawah
+          sheet.appendRow(rowValues);
+          if (itemIdStr) {
+            existingIdsMap[itemIdStr] = sheet.getLastRow();
+          }
+        }
+      }
     }
 
-    // 4. Hitung Ulang Grand Total dari seluruh baris data
+    // 4. Hitung Ulang Grand Total dari seluruh baris data & lampirkan baris TOTAL KESELURUHAN
     var newLastRow = sheet.getLastRow();
     if (newLastRow >= 2) {
       var grandIncome = 0;
@@ -572,23 +685,28 @@ function doPost(e) {
         var rowId = String(dataRange[r][0] || "");
         
         if (rowCat.indexOf("TOTAL KESELURUHAN") === -1 && rowId !== "SUMMARY") {
-          grandIncome += Number(dataRange[r][4] || 0);
-          grandExpense += Number(dataRange[r][5] || 0);
+          var parseVal = function(val) {
+            if (typeof val === "number") return val;
+            var s = String(val || "").replace(/[^0-9.-]/g, "");
+            return Number(s) || 0;
+          };
+          grandIncome += parseVal(dataRange[r][4]);
+          grandExpense += parseVal(dataRange[r][5]);
         }
       }
 
       var grandNet = grandIncome - grandExpense;
 
-      // 5. Lampirkan Baris TOTAL KESELURUHAN di baris paling bawah
+      // Lampirkan Baris Total Hasil Pendapatan dan Pengeluaran Karyawan di baris paling bawah
       sheet.appendRow([
-        "SUMMARY",
+        "-",
         new Date().toISOString().split('T')[0],
-        "TOTAL KESELURUHAN",
-        "3 BERSAUDARA HQ",
+        "TOTAL",
+        "Total Hasil Pendapatan dan Pengeluaran Karyawan",
         grandIncome,
         grandExpense,
         grandNet,
-        "REKAPITULASI DANA AKHIR",
+        "Rekap Otomatis",
         new Date().toLocaleString("id-ID")
       ]);
 
@@ -597,6 +715,12 @@ function doPost(e) {
         .setFontWeight("bold")
         .setBackground("#fef08a")
         .setFontColor("#713f12");
+    }
+
+    // 5. Otomatis format seluruh kolom nominal (Kolom 5, 6, 7) menjadi Format Rupiah (Rp #,##0)
+    var finalLastRow = sheet.getLastRow();
+    if (finalLastRow >= 2) {
+      sheet.getRange(2, 5, finalLastRow - 1, 3).setNumberFormat('"Rp "#,##0');
     }
     
     return ContentService.createTextOutput(JSON.stringify({

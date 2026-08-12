@@ -131,7 +131,7 @@ export const FinancialAnalyticsChart: React.FC<FinancialAnalyticsChartProps> = (
             <h3 className="font-black text-slate-900 text-sm sm:text-base font-mono uppercase tracking-tight flex items-center gap-2">
               <span>Visualisasi & Grafik Keuangan</span>
               <span className="bg-red-100 text-red-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
-                TIGA BERSAUDARA
+                SYSTEM APLIKASI
               </span>
             </h3>
             <p className="text-xs text-slate-500 font-sans">

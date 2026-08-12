@@ -1,6 +1,6 @@
 import React from 'react';
+import { AppLogo } from './AppLogo';
 import {
-  Landmark,
   LayoutDashboard,
   Users,
   PlusCircle,
@@ -57,23 +57,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }`}
       >
         {/* Brand Header */}
-        <div className="p-6 bg-red-800 border-b border-red-900 flex items-center justify-between">
+        <div className="p-5 bg-red-800/90 border-b border-red-900 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="bg-yellow-400 p-2.5 rounded-xl text-red-900 shadow-md shadow-yellow-500/20 font-bold">
-              <Landmark className="w-5 h-5" />
-            </div>
+            <AppLogo size="md" />
             <div>
               <h1 className="font-black text-xs tracking-wider font-mono text-white uppercase flex flex-col gap-0.5">
-                <span>TIGA BERSAUDARA</span>
-                <span className="bg-yellow-400 text-red-950 px-2 py-0.5 rounded text-[9px] font-black w-fit tracking-wider">SISTEM KEUANGAN</span>
+                <span>SYSTEM APLIKASI</span>
+                <span className="bg-yellow-400 text-red-950 px-2 py-0.5 rounded text-[9px] font-black w-fit tracking-wider">SYSTEM CONTROL</span>
               </h1>
               <div className="flex items-center space-x-1.5 mt-0.5">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-300 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-400"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
-                <span className="text-[9px] text-yellow-300 font-mono font-bold tracking-tight uppercase">
-                  3 BERSAUDARA HQ
+                <span className="text-[9px] text-emerald-300 font-mono font-bold tracking-tight uppercase">
+                  SYSTEM ONLINE
                 </span>
               </div>
             </div>
