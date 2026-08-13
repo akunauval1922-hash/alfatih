@@ -1,5 +1,5 @@
 import { Transaction, Personnel, AppConfig } from '../types';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 
 export const DEFAULT_STAFF: string[] = [];
 
@@ -419,11 +419,11 @@ export const exportToExcel = (
 
   // Append Total Summary Row
   rawData.push({
-    "No": "-",
+    "No": "SUMMARY",
     "ID Transaksi": "-",
     "Tanggal": "-",
-    "Kategori": "TOTAL",
-    "Nama / Subjek Karyawan": "Total Hasil Pendapatan dan Pengeluaran Karyawan",
+    "Kategori": "TOTAL KESELURUHAN",
+    "Nama / Subjek Karyawan": "-",
     "Total Pendapatan (IDR)": formatRupiah(grandIncome),
     "Total Pengeluaran (IDR)": formatRupiah(grandExpense),
     "Total Hasil / Saldo (IDR)": formatRupiah(grandNet),
@@ -432,6 +432,33 @@ export const exportToExcel = (
   });
 
   const wsTransactions = XLSX.utils.json_to_sheet(rawData);
+
+  // Apply borders and styling for Worksheet 1
+  if (wsTransactions['!ref']) {
+    const range = XLSX.utils.decode_range(wsTransactions['!ref']);
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ c: C, r: R });
+        if (!wsTransactions[cellRef]) continue;
+        
+        wsTransactions[cellRef].s = {
+          border: {
+            top: { style: 'thin', color: { rgb: "000000" } },
+            bottom: { style: 'thin', color: { rgb: "000000" } },
+            left: { style: 'thin', color: { rgb: "000000" } },
+            right: { style: 'thin', color: { rgb: "000000" } }
+          },
+          font: {
+            bold: R === 0 || R === range.e.r, // Bold header and last row
+            color: R === range.e.r ? { rgb: "713F12" } : { rgb: "000000" }
+          },
+          fill: {
+            fgColor: R === 0 ? { rgb: "E2E8F0" } : (R === range.e.r ? { rgb: "FEF08A" } : { rgb: "FFFFFF" })
+          }
+        };
+      }
+    }
+  }
 
   // Calculate clean column widths for Worksheet 1
   if (rawData.length > 0) {
@@ -473,8 +500,8 @@ export const exportToExcel = (
   });
 
   staffSummary.push({
-    "No": "-",
-    "Nama Karyawan": "Total Hasil Pendapatan dan Pengeluaran Karyawan",
+    "No": "SUMMARY",
+    "Nama Karyawan": "TOTAL KESELURUHAN",
     "Total Log Transaksi": transactions.length,
     "Total Pendapatan (IDR)": formatRupiah(grandIncome),
     "Total Pengeluaran (IDR)": formatRupiah(grandExpense),
@@ -483,6 +510,33 @@ export const exportToExcel = (
   });
 
   const wsStaff = XLSX.utils.json_to_sheet(staffSummary);
+
+  // Apply borders and styling for Worksheet 2
+  if (wsStaff['!ref']) {
+    const range = XLSX.utils.decode_range(wsStaff['!ref']);
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ c: C, r: R });
+        if (!wsStaff[cellRef]) continue;
+        
+        wsStaff[cellRef].s = {
+          border: {
+            top: { style: 'thin', color: { rgb: "000000" } },
+            bottom: { style: 'thin', color: { rgb: "000000" } },
+            left: { style: 'thin', color: { rgb: "000000" } },
+            right: { style: 'thin', color: { rgb: "000000" } }
+          },
+          font: {
+            bold: R === 0 || R === range.e.r, // Bold header and last row
+            color: R === range.e.r ? { rgb: "713F12" } : { rgb: "000000" }
+          },
+          fill: {
+            fgColor: R === 0 ? { rgb: "E2E8F0" } : (R === range.e.r ? { rgb: "FEF08A" } : { rgb: "FFFFFF" })
+          }
+        };
+      }
+    }
+  }
 
   // Calculate clean column widths for Worksheet 2
   if (staffSummary.length > 0) {
@@ -597,13 +651,16 @@ function doPost(e) {
       sheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#e2e8f0");
     }
 
-    // 2. Jika baris terakhir di tabel adalah baris "TOTAL KESELURUHAN" sebelumnya, hapus dahulu
+    // 2. Bersihkan SELURUH baris "TOTAL KESELURUHAN" atau "SUMMARY" yang mungkin tertinggal di sheet
     var lastRow = sheet.getLastRow();
-    if (lastRow > 1) {
-      var lastCatVal = String(sheet.getRange(lastRow, 3).getValue() || "");
-      var lastIdVal = String(sheet.getRange(lastRow, 1).getValue() || "");
-      if (lastCatVal.indexOf("TOTAL KESELURUHAN") !== -1 || lastIdVal === "SUMMARY") {
-        sheet.deleteRow(lastRow);
+    if (lastRow >= 2) {
+      var allData = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+      for (var r = allData.length - 1; r >= 0; r--) {
+        var rowIdVal = String(allData[r][0] || "").toUpperCase();
+        var rowCatVal = String(allData[r][2] || "").toUpperCase();
+        if (rowIdVal === "SUMMARY" || rowCatVal.indexOf("TOTAL") !== -1) {
+          sheet.deleteRow(r + 2);
+        }
       }
     }
 
@@ -681,7 +738,7 @@ function doPost(e) {
       var dataRange = sheet.getRange(2, 1, newLastRow - 1, 9).getValues();
 
       for (var r = 0; r < dataRange.length; r++) {
-        var rowCat = String(dataRange[r][2] || "");
+        var rowCat = String(dataRange[r][2] || "").toUpperCase();
         var rowId = String(dataRange[r][0] || "");
         
         if (rowCat.indexOf("TOTAL KESELURUHAN") === -1 && rowId !== "SUMMARY") {
@@ -697,17 +754,16 @@ function doPost(e) {
 
       var grandNet = grandIncome - grandExpense;
 
-      // Lampirkan Baris Total Hasil Pendapatan dan Pengeluaran Karyawan di baris paling bawah
       sheet.appendRow([
-        "-",
-        new Date().toISOString().split('T')[0],
-        "TOTAL",
-        "Total Hasil Pendapatan dan Pengeluaran Karyawan",
+        "SUMMARY",
+        "",
+        "TOTAL KESELURUHAN",
+        "",
         grandIncome,
         grandExpense,
         grandNet,
-        "Rekap Otomatis",
-        new Date().toLocaleString("id-ID")
+        "",
+        ""
       ]);
 
       var summaryRowIdx = sheet.getLastRow();
@@ -725,7 +781,7 @@ function doPost(e) {
     
     return ContentService.createTextOutput(JSON.stringify({
       "result": "success", 
-      "count": items.length
+      "count": (typeof items !== "undefined" && items ? items.length : 1)
     })).setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {

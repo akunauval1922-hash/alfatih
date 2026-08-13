@@ -162,6 +162,16 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     setTestResult(null);
 
     try {
+      // 1. Verify URL is correct by attempting a GET request first (no-cors not needed for simple GET, allows reading status)
+      let verifyUrl = scriptUrl.trim();
+      verifyUrl += (verifyUrl.includes('?') ? '&' : '?') + 'format=json&_t=' + Date.now();
+      
+      const verifyRes = await fetch(verifyUrl);
+      if (!verifyRes.ok) {
+        throw new Error('Verifikasi URL gagal');
+      }
+
+      // 2. Send Dummy Data
       const dummyTx = {
         id: Date.now(),
         date: new Date().toISOString().split('T')[0],
@@ -179,14 +189,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         body: JSON.stringify(dummyTx)
       });
 
+      // 3. Auto-pull to app so the user sees the data
+      if (onUpdateFromDatabase) {
+        await new Promise(resolve => setTimeout(resolve, 1500)); // wait a bit for Apps Script to finish writing
+        await onUpdateFromDatabase();
+      }
+
       setTestResult({
         success: true,
-        msg: 'Sinyal terkirim ke Sistem Kontrol! Periksa baris baru pada spreadsheet Anda.'
+        msg: 'Koneksi Sukses! Data uji coba berhasil masuk ke Google Sheets dan telah ditarik ke aplikasi (lihat Dashboard).'
       });
     } catch (err) {
       setTestResult({
         success: false,
-        msg: 'Gagal menghubungi Web App URL. Pastikan akses Sistem Kontrol diset ke "Anyone".'
+        msg: 'Gagal menghubungi Web App URL. Pastikan URL benar dan akses diset ke "Anyone".'
       });
     } finally {
       setIsTesting(false);

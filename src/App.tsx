@@ -363,7 +363,15 @@ export default function App() {
       const cloudData = await fetchFromGoogleSheets(config.googleScriptUrl, 10000);
       if (cloudData && Array.isArray(cloudData)) {
         const map = new Map<number, Transaction>();
-        reloaded.forEach((t) => map.set(t.id, t));
+        
+        // Preserve only local items that haven't been synced to the cloud yet (pending push)
+        reloaded.forEach((t) => {
+          if (!t.syncedToCloud) {
+            map.set(t.id, t);
+          }
+        });
+        
+        // Add/Overwrite with all items from the cloud (source of truth)
         cloudData.forEach((t) => map.set(t.id, t));
 
         const merged = Array.from(map.values()).sort(
